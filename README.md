@@ -7,7 +7,7 @@ Desktop agent for the GCC (Gucci Command Center) ecosystem. Runs on Windows/macO
 - **Installation Wizard** (`wizard.py`) — Guided setup: Welcome → Connection → Storage → ScreenPipe → Settings → Auto-start → Done
 - **Tray Icon** (`tray.py`) — System tray with color-coded status indicator (green=connected, amber=connecting, gray=disconnected, red=error)
 - **WebSocket Client** (in `tray.py`) — Persistent connection to GCC Bridge Server with auto-reconnect (exponential backoff) and periodic heartbeat
-- **Executor** (planned) — Local task execution engine
+- **Shell Executor** (`executor.py`) — Local command execution with real-time output streaming, three security modes (assisted/yolo/whitelist), timeout handling, and cancellation support
 - **ScreenPipe Proxy** (planned) — Local ScreenPipe data relay
 
 ## Quick Start
