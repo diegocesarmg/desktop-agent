@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.gcc-agent/
+*.egg-info/
+dist/
+build/
+.venv/
