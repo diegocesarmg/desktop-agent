@@ -14,11 +14,13 @@ import sys
 import threading
 import time
 from enum import Enum
+from typing import Optional
 
 import pystray
 from PIL import Image, ImageDraw
 
 from config import load_config
+from updater import AutoUpdater
 
 logger = logging.getLogger("gcc-agent")
 
@@ -208,12 +210,14 @@ class TrayApp:
     def __init__(self):
         self.config = load_config()
         self._state = ConnectionState.DISCONNECTED
-        self._icon: pystray.Icon | None = None
+        self._icon: Optional[pystray.Icon] = None
         self._ws_client = WebSocketClient(
             self.config, on_state_change=self._on_ws_state_change
         )
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._ws_thread: threading.Thread | None = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._ws_thread: Optional[threading.Thread] = None
+        self._updater = AutoUpdater(self.config)
+        self._checking_updates = False
 
     def _on_ws_state_change(self, state: ConnectionState):
         self._state = state
@@ -229,11 +233,41 @@ class TrayApp:
                 enabled=False,
             ),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Check for Updates", self._on_check_updates),
             pystray.MenuItem("Reconnect", self._on_reconnect),
             pystray.MenuItem("Quit", self._on_quit),
         )
 
     # -- Menu actions -------------------------------------------------------
+
+    def _on_check_updates(self, icon, item):
+        """Triggered by the 'Check for Updates' tray menu item."""
+        if self._checking_updates:
+            logger.debug("Update check already in progress — ignoring duplicate request")
+            return
+        logger.info("Manual update check requested")
+        threading.Thread(target=self._run_update_check, daemon=True).start()
+
+    def _run_update_check(self, *, notify: bool = True) -> tuple[str, str]:
+        """Run update check and optionally show a notification.
+
+        Can be called from any thread.  Returns (status, message).
+        """
+        self._checking_updates = True
+        try:
+            status, message = self._updater.check()
+        finally:
+            self._checking_updates = False
+
+        if notify and self._icon:
+            title = "GCC Agent — Updates"
+            try:
+                self._icon.notify(message, title)
+            except Exception as exc:
+                # notify() not supported on all platforms — fall back to log
+                logger.info("Update check result: %s", message)
+                logger.debug("Notification not available: %s", exc)
+        return status, message
 
     def _on_reconnect(self, icon, item):
         logger.info("Manual reconnect requested")
@@ -292,8 +326,17 @@ class TrayApp:
             menu=self._build_menu(),
         )
 
+        # Kick off startup update check (non-blocking, via pystray setup callback)
+        def _startup(icon: pystray.Icon) -> None:
+            """Called by pystray once the icon event loop is ready."""
+            icon.visible = True
+            # Give the icon a moment to render before showing a notification
+            time.sleep(1)
+            logger.info("Startup update check…")
+            self._run_update_check(notify=True)
+
         logger.info("Starting tray icon…")
-        self._icon.run()
+        self._icon.run(setup=_startup)
 
         # Cleanup after tray exits
         self._ws_client.stop()
