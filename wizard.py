@@ -10,6 +10,13 @@ import platform
 import subprocess
 import sys
 import tkinter as tk
+
+# Fix console encoding for emoji/unicode on Windows (cp1252 systems)
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 
