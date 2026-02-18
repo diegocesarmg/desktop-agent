@@ -18,6 +18,10 @@ DEFAULT_CONFIG = {
     "agent_name": "",
     "check_interval_seconds": 60,
     "log_level": "INFO",
+    # Task #103: Desktop Control — Mouse & Keyboard
+    "permission_mode": "assisted",   # "yolo" | "assisted"
+    "dashboard_port": 7070,          # Local HTTP server port for GCC API relay
+    "dashboard_enabled": True,       # Enable local HTTP API server
 }
 
 

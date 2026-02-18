@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import os
+import time
 
 # Fix console encoding for emoji/unicode on Windows (cp1252 systems)
 if sys.platform == "win32":
@@ -15,11 +16,11 @@ if sys.platform == "win32":
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import AppConfig
+from config import AppConfig, load_config
 from wizard import run_wizard
 from tray import start_tray, BridgeWebSocket
 from shell_executor import ShellExecutor, ShellType
-from desktop_control import DesktopController
+from desktop_control import DesktopController, DesktopRequest, DesktopAction
 from mission_manager import MissionManager
 from multi_agent import MultiAgentRegistry
 
@@ -55,6 +56,16 @@ class GCCDesktopAgent:
         self.missions = MissionManager(self.config)
         self.registry = MultiAgentRegistry(self.config)
         self.registry.register()
+        # Task #103: Start local HTTP server for mouse/keyboard relay
+        cfg = load_config()
+        if cfg.get("dashboard_enabled", True):
+            try:
+                from local_server import start_local_server_thread
+                port = cfg.get("dashboard_port", 7070)
+                start_local_server_thread(port=port)
+                logger.info("Local API server started on port %d", port)
+            except Exception as e:
+                logger.warning("Could not start local API server: %s", e)
 
     def _handle_ws_message(self, data: dict):
         """Route incoming WebSocket messages to appropriate handlers."""
@@ -119,19 +130,63 @@ class GCCDesktopAgent:
         }
 
     def _handle_desktop_action(self, data: dict) -> dict:
-        action = data.get("action", "")
+        """Handle desktop_action WS messages (Task #103: mouse & keyboard support)."""
+        action_str = data.get("action", "")
         params = data.get("params", {})
         mission_id = data.get("mission_id")
+        request_id = data.get("request_id")
 
-        mission = self.missions.get(mission_id) if mission_id else None
-        permissions = mission.desktop_permissions if mission else DesktopController and \
-            __import__("desktop_control").DesktopPermissions.screenshot_only()
+        # Resolve permission mode (mission yolo overrides global config)
+        cfg = load_config()
+        permission_mode = cfg.get("permission_mode", "assisted")
+        if mission_id and self.missions:
+            mission = self.missions.get(mission_id)
+            if mission and getattr(mission, "yolo_mode", False):
+                permission_mode = "yolo"
 
-        result = self.desktop.execute_action(permissions, action, params)
-        result["type"] = "desktop_result"
-        result["request_id"] = data.get("request_id")
-        result["mission_id"] = mission_id
-        return result
+        try:
+            action_enum = DesktopAction(action_str)
+        except ValueError:
+            return {
+                "type": "desktop_result",
+                "request_id": request_id,
+                "mission_id": mission_id,
+                "action": action_str,
+                "success": False,
+                "error": f"Unknown action: {action_str!r}",
+            }
+
+        req = DesktopRequest(
+            id=request_id or f"ws-{int(time.time()*1000)}",
+            action=action_enum,
+            mission_id=mission_id,
+            x=params.get("x"),
+            y=params.get("y"),
+            text=params.get("text"),
+            keys=params.get("keys"),
+            button=params.get("button", "left"),
+            duration=params.get("duration", 0.0),
+            clicks=params.get("clicks", 3),
+            window_title=params.get("window_title"),
+            interval=params.get("interval", 0.02),
+            region=params.get("region"),
+        )
+
+        result = self.desktop.execute(req)
+
+        response: dict = {
+            "type": "desktop_result",
+            "request_id": request_id,
+            "mission_id": mission_id,
+            "action": action_str,
+            "success": result.success,
+            "duration_ms": result.duration_ms,
+        }
+        if result.error:
+            response["error"] = result.error
+        if result.data:
+            response["data"] = result.data
+        return response
 
     def _handle_mission_create(self, data: dict) -> dict:
         mission = self.missions.create(

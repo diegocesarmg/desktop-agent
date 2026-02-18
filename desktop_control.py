@@ -72,6 +72,8 @@ class DesktopRequest:
     text: Optional[str] = None
     keys: Optional[list[str]] = None
     duration: float = 0.0
+    # Mouse button (Task #103)
+    button: str = "left"    # left | right | middle
     # Screenshot options
     region: Optional[tuple[int, int, int, int]] = None  # x, y, width, height
     image_format: str = "png"
@@ -220,14 +222,14 @@ class DesktopController:
         if action == DesktopAction.SCREENSHOT:
             return self._screenshot(req)
         elif action == DesktopAction.CLICK:
-            pyautogui.click(x=req.x, y=req.y)
-            return {"x": req.x, "y": req.y}
+            pyautogui.click(x=req.x, y=req.y, button=req.button)
+            return {"x": req.x, "y": req.y, "button": req.button}
         elif action == DesktopAction.DOUBLE_CLICK:
-            pyautogui.doubleClick(x=req.x, y=req.y)
-            return {"x": req.x, "y": req.y}
+            pyautogui.doubleClick(x=req.x, y=req.y, button=req.button)
+            return {"x": req.x, "y": req.y, "button": req.button}
         elif action == DesktopAction.RIGHT_CLICK:
             pyautogui.rightClick(x=req.x, y=req.y)
-            return {"x": req.x, "y": req.y}
+            return {"x": req.x, "y": req.y, "button": "right"}
         elif action == DesktopAction.TYPE_TEXT:
             if req.text:
                 pyautogui.typewrite(req.text, interval=req.interval)
